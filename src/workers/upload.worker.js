@@ -1,7 +1,7 @@
 async function upload(file) {
   console.log(file);
   try {
-    const response = await fetch('http://localhost:8081/uploads', {
+    const response = await fetch('http://localhost:8081/uploads.json', {
       method: 'POST',
       body: file,
       mode: 'no-cors',
