@@ -15,8 +15,6 @@ async function upload(file) {
 
 function process(files) {
   console.log('processing', files.length, 'files');
-  // const totalSize = calculateTotalSize(files);
-  // console.log('processing', totalSize, 'bytes');
   const formData = new FormData();
   for (var j = 0; j < files.length; j++) {
     var file = files[j];
