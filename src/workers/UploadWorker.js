@@ -1,11 +1,7 @@
-import Worker from './upload.worker.js';
-import autoBind from 'auto-bind';
-
 export default class UploadWorker {
   constructor(callbacks) {
-    autoBind(this);
+    this.xhr = new XMLHttpRequest();
     this.initializeCallbacks(callbacks);
-    this.initializeWorker();
   }
 
   initializeCallbacks = ({
@@ -22,48 +18,91 @@ export default class UploadWorker {
     this.onError = onError;
   }
 
-  initializeWorker() {
-    this.worker = new Worker();
-    this.worker.onerror = this.onError;
-    this.worker.onmessage = this.handleMessage;
-  }
-
-  handleMessage({ data }) {
-    const { cmd, ...params } = data;
-    const commands = {
-      loadCancelled: this.onCancel,
-      progressReport: this.onProgress,
-      loadStart: this.onLoadStart,
-      loadEnd: this.onLoadEnd,
-    };
-    const callbackToBeExecuted = commands[cmd];
-
-    if (callbackToBeExecuted) {
-      callbackToBeExecuted(params);
-    } else {
-      let possibleCommands = '';
-      const commandKeys = Object.keys(commands);
-      commandKeys.forEach((key, i) => {
-        const isLastKey = i < commandKeys.length - 1;
-        possibleCommands += isLastKey ? `\`${key}\`, ` : `\`${key}\`.`;
-      });
-      throw new Error(`Command \`${cmd}\` not found, possible callbacks are ${possibleCommands}`);
-    }
-  }
-
-  upload(files) {
+  upload = (files) => {
     if (files && files.length > 0) {
-      this.worker.postMessage({ cmd: 'upload', files });
+      const formData = this.convertFilesToFormData(files);
+      this.sendFiles(formData);
     } else {
       throw new Error('No Files selected');
     }
   }
 
-  logError(e) {
+    sendFiles = (files) => {
+      try {
+      const uploadUrl = 'http://localhost:8081/uploads.json';
+      this.xhr.open('POST', uploadUrl);
+      this.addXHRStartHandler();
+      this.addXHRProgressHandler();
+      this.addXHRFinishHandler();
+      this.xhr.send(files);
+
+    } catch (e) {
+      throw new Error(e);
+    }
+  }
+
+  addXHRStartHandler = () => {
+    this.xhr.onloadstart = (e) => {
+      const { loaded, total } = e;
+      if (this.loadStart) {
+        this.loadStart( { loaded, total });
+      }
+    }
+  }
+
+  addXHRProgressHandler = () => {
+    this.xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        const { loaded, total } = e;
+        if (this.onProgress) {
+          this.onProgress({ loaded, total });
+        }
+      }
+    }, false);
+  }
+
+  addXHRStartHandler = () => {
+    this.xhr.onloadstart = function (e) {
+      const { loaded, total } = e;
+      if (this.onLoadStart) {
+        this.onLoadStart({ loaded, total });
+      }
+    }
+  }
+
+  addXHRFinishHandler = () => {
+    this.xhr.onloadend = function (e) {
+      const { target: {
+        response,
+        status,
+        statusText,
+        responseURL,
+      } } = e;
+      if (status === 0 && this.onCancel) {
+        this.onCancel({ response, status, statusText, responseURL});
+      } else if (this.onLoadEnd) {
+        this.onLoadEnd({ response, status, statusText, responseURL })
+      }
+    }
+  }
+
+  convertFilesToFormData = (files) => {
+    const formData = new FormData();
+    for (var j = 0; j < files.length; j++) {
+      var file = files[j];
+      formData.append(`files`, file, file.name);
+    }
+    return formData;
+  }
+
+  logError = (e) => {
     throw new Error(`WEB_WORKER_ERROR: Line ${e.lineno} in ${e.filename}: ${e.message}`);
   }
 
-  cancelUpload() {
-    this.worker.postMessage({ cmd: 'cancel' });
+  cancelUpload = () => {
+    this.xhr.abort();
+    if (this.onCancel) {
+      this.onCancel();
+    }
   }
 }
